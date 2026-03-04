@@ -3,6 +3,10 @@ from datetime import date
 import requests
 from bs4 import BeautifulSoup
 
+BOLD = "\033[1m"
+CLASSIC = "\033[0m"
+LINK = "\033[2m"
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Scraping script for job search.')
     parser.add_argument('-t', '--title', type=str, required=True, help='The job title to search for.')
@@ -67,13 +71,18 @@ def scrape_linkedin(keywords: list, location: str = None) -> list:
 
     return jobs
 
+def display_jobs(jobs):
+    for idx, job in enumerate(jobs, 1):
+        print(f"{BOLD}[{idx}]. {job['title']}{CLASSIC}")
+        print(f"\t{job['company']}")
+        print(f"\t({job['location']})")
+        print(f"\tLink: {LINK}{job['link']}{CLASSIC}\n")
 
 def main():
     args = parse_args()
-    print(f"Scraping for job title: {args.title} in location: {args.location}")
+    print(f"Scraping for job title: {args.title} in location: {args.location}\n")
     jobs = scrape_linkedin(keywords=[args.title], location=args.location)
-    for job in jobs:
-        print(job)
+    display_jobs(jobs)
 
 if __name__ == "__main__":
     main()
