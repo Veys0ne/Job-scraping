@@ -70,7 +70,11 @@ def scrape_linkedin(title: str, location: list) -> list:
     
     jobs = []
 
-    for loc in location.replace(" ", "").split(","):
+    location = location.split(",")
+    for i in range(len(location)):
+        location[i] = location[i].strip()
+  
+    for loc in location:
         cpt = 0
         params = {
             "keywords": title,
