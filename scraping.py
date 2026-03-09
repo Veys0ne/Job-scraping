@@ -3,6 +3,7 @@ from datetime import date
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlencode, quote
+import re
 
 BOLD = "\033[1m"
 CLASSIC = "\033[0m"
@@ -23,6 +24,43 @@ def parse_args():
     parser.add_argument('-l' ,'--location', type=str, required=True, help='The location to search in.')
     return parser.parse_args()
 
+def filter_jobs(jobs: list, query: str) -> list:
+    def tokenize(q):
+        return re.findall(r'"[^"]*"|AND|OR|NOT|\(|\)|\S+', q)
+
+    def parse(tokens, i=0):
+        left, i = parse_and(tokens, i)
+        while i < len(tokens) and tokens[i] == "OR":
+            right, i = parse_and(tokens, i + 1)
+            left = ("OR", left, right)
+        return left, i
+
+    def parse_and(tokens, i):
+        left, i = parse_atom(tokens, i)
+        while i < len(tokens) and tokens[i] == "AND":
+            right, i = parse_atom(tokens, i + 1)
+            left = ("AND", left, right)
+        return left, i
+
+    def parse_atom(tokens, i):
+        if tokens[i] == "NOT":
+            child, i = parse_atom(tokens, i + 1)
+            return ("NOT", child), i
+        if tokens[i] == "(":
+            expr, i = parse(tokens, i + 1)
+            return expr, i + 1 
+        return ("WORD", tokens[i].strip('"').lower()), i + 1
+
+    def match(node, text):
+        if node[0] == "WORD": return node[1] in text
+        if node[0] == "AND":  return match(node[1], text) and match(node[2], text)
+        if node[0] == "OR":   return match(node[1], text) or match(node[2], text)
+        if node[0] == "NOT":  return not match(node[1], text)
+
+    tree, _ = parse(tokenize(query))
+    return [job for job in jobs if match(tree, job["title"].lower())]
+
+
 def create_url(params, base_url):
     return base_url + "?" + urlencode(params, quote_via=quote)
 
@@ -37,8 +75,8 @@ def scrape_linkedin(title: str, location: list) -> list:
         params = {
             "keywords": title,
             "location": loc,
-            # "f_TPR": "r604800",   # Last week
-            "f_TPR": "r86400",    # Last 24 hours
+            "f_TPR": "r604800",   # Last week
+            # "f_TPR": "r86400",    # Last 24 hours
             "sortBy": "DD",       # Sort by date
             "start": "0",
             "f_WT": "1,3"
@@ -48,7 +86,7 @@ def scrape_linkedin(title: str, location: list) -> list:
 
         try:
             response = requests.get(url, headers=HEADERS, timeout=100)
-            # print(f"LinkedIn URL: {response.url}")
+            print(f"LinkedIn URL: {response.url}")
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
 
@@ -59,8 +97,8 @@ def scrape_linkedin(title: str, location: list) -> list:
                     title_element = card.find("h3", class_="base-search-card__title")
                     title_text = title_element.text.strip() if title_element else "N/A"
 
-                    if "stage" in title.lower() or "stagiaire" in title_text.lower():
-                        if "stage" not in title_text.lower() and "stagiaire" not in title_text.lower():
+                    if "stage" in title.lower() or "stagiaire" in title.lower() or "intern" in title.lower():
+                        if "stage" not in title_text.lower() and "stagiaire" not in title_text.lower() and "intern" not in title_text.lower():
                             continue
 
                     company_element = card.find("h4", class_="base-search-card__subtitle")
@@ -109,6 +147,7 @@ def main():
     args = parse_args()
     print(f"Scraping for job title: {args.title} in location: {args.location}\n")
     jobs = scrape_linkedin(title=args.title, location=args.location)
+    jobs = filter_jobs(jobs, args.title)
     display_jobs(jobs)
  
 if __name__ == "__main__":
