@@ -69,13 +69,13 @@ def scrape_linkedin(title: str, location: list) -> list:
     base_url = "https://www.linkedin.com/jobs/search/"
     
     jobs = []
+    cpt_o = 0
 
     location = location.split(",")
     for i in range(len(location)):
         location[i] = location[i].strip()
   
     for loc in location:
-        cpt = 0
         params = {
             "keywords": title,
             "location": loc,
@@ -133,10 +133,13 @@ def scrape_linkedin(title: str, location: list) -> list:
 
                 except Exception:
                     continue
-
+            cpt = len(filter_jobs(jobs, title))
+            print(f"Found {cpt - cpt_o} jobs in {loc}")
+            cpt_o = cpt
         except requests.RequestException as e:
             raise RuntimeError(f"LinkedIn Error : {e}")
-        print(f"Found {cpt} jobs in {loc}")
+        
+        
 
     return jobs
 
