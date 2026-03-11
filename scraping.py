@@ -9,19 +9,13 @@ BOLD = "\033[1m"
 CLASSIC = "\033[0m"
 LINK = "\033[2m"
 
-# for LinkedIn scraping, we need to set a user-agent to mimic a real browser
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    ),
-}
-
 def parse_args():
     parser = argparse.ArgumentParser(description='Scraping script for job search.')
     parser.add_argument('-t', '--title', type=str, required=True, help='The job title to search for.')
     parser.add_argument('-l' ,'--location', type=str, required=True, help='The location to search in.')
+    parser.add_argument('-d', '--day', action='store_true', help='Search for jobs posted in the last 24 hours.')
+    parser.add_argument('-w', '--week', action='store_true', help='Search for jobs posted in the last week.')
+    parser.add_argument('-m', '--month', action='store_true', help='Search for jobs posted in the last month.')
     return parser.parse_args()
 
 def filter_jobs(jobs: list, query: str) -> list:
@@ -64,14 +58,25 @@ def filter_jobs(jobs: list, query: str) -> list:
 def create_url(params, base_url):
     return base_url + "?" + urlencode(params, quote_via=quote)
 
+def temporal_filter(args):
+    if args.day:
+        return "r86400"  # Last 24 hours
+    elif args.week:
+        return "r604800"  # Last week
+    elif args.month:
+        return "r2592000" # Last month
+    else:
+        return None
 
-def scrape_linkedin(title: str, location: list) -> list:
+
+def scrape_linkedin(args) -> list:
     base_url = "https://www.linkedin.com/jobs/search/"
     
     jobs = []
     cpt_o = 0
 
-    location = location.split(",")
+    location = args.location.split(",")
+    title = args.title
     for i in range(len(location)):
         location[i] = location[i].strip()
   
@@ -79,8 +84,7 @@ def scrape_linkedin(title: str, location: list) -> list:
         params = {
             "keywords": title,
             "location": loc,
-            "f_TPR": "r604800",   # Last week
-            # "f_TPR": "r86400",    # Last 24 hours
+            "f_TPR": temporal_filter(args),  # Temporal filter
             "sortBy": "DD",       # Sort by date
             "start": "0",
             "f_WT": "1,3"
@@ -89,8 +93,8 @@ def scrape_linkedin(title: str, location: list) -> list:
         url = create_url(params, base_url)
 
         try:
-            response = requests.get(url, headers=HEADERS, timeout=100)
-            print(f"LinkedIn URL: {response.url}")
+            response = requests.get(url, timeout=100)
+            # print(f"LinkedIn URL: {response.url}")
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
 
@@ -153,7 +157,7 @@ def display_jobs(jobs):
 def main():
     args = parse_args()
     print(f"Scraping for job title: {args.title} in location: {args.location}\n")
-    jobs = scrape_linkedin(title=args.title, location=args.location)
+    jobs = scrape_linkedin(args) 
     jobs = filter_jobs(jobs, args.title)
     display_jobs(jobs)
  
