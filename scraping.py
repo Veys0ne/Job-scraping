@@ -54,6 +54,15 @@ def filter_jobs(jobs: list, query: str) -> list:
     tree, _ = parse(tokenize(query))
     return [job for job in jobs if match(tree, job["title"].lower())]
 
+def delete_duplicates(jobs):
+    result = []
+    seen = []
+    for job in jobs:
+        if job["title"] not in seen:
+            seen.append(job["title"])
+            result.append(job)
+    print(f"after deleting duplicates, {len(result)} jobs found:")
+    return result
 
 def create_url(params, base_url):
     return base_url + "?" + urlencode(params, quote_via=quote)
@@ -159,6 +168,7 @@ def main():
     print(f"Scraping for job title: {args.title} in location: {args.location}\n")
     jobs = scrape_linkedin(args) 
     jobs = filter_jobs(jobs, args.title)
+    jobs = delete_duplicates(jobs)
     display_jobs(jobs)
  
 if __name__ == "__main__":
