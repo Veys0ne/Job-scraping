@@ -29,9 +29,7 @@ MAIL_TO = [m.strip() for m in os.environ.get("MAIL_TO", "").split(",") if m.stri
 
 def job_id(job: dict) -> str:
     """Identifiant stable : l'ID numérique LinkedIn, sinon le lien sans paramètres."""
-    if job["source"] == "linkedin":
-        return job["id"]
-    return f"{job['sources']}:{job['id']}"
+    return job['id']
 
 
 def load_seen() -> set:

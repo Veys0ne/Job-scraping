@@ -1,7 +1,8 @@
 from .linkedin import LinkedIn
+from .hellowork import HelloWork
 
 # the sorting is important: if there is duplicates, the first one is kept
-ALL_SOURCES = {cls.name: cls for cls in (LinkedIn, LinkedIn)}
+ALL_SOURCES = {cls.name: cls for cls in (HelloWork, LinkedIn)}
 
 def get_sources(names=None) -> list:
     result = []
