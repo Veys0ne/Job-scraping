@@ -1,20 +1,20 @@
 import json
 import os
-import re
-import sys
-from argparse import Namespace
-from pathlib import Path
 import smtplib
+import sys
 from email.message import EmailMessage
+from pathlib import Path
 
-from scraping import scrape_linkedin, filter_jobs 
+from scraping import search_all
+from filters import delete_duplicates
+from sources import get_sources
 
 # ---------- Configuration ----------
 LOC = "France"
 SEARCHES = [
     {"title": '("stage" OR "stagiaire" OR "intern") AND ("cyber" OR "cybersécurité" OR "cybersecurity" OR "SOC" OR "pentest")',
      "location": LOC, "week": True},
-     {"title": '("cdi" OR "contrat" OR "cdd") AND ("cyber" OR "cybersécurité" OR "cybersecurity" OR "SOC" OR "pentest")',
+    {"title": '("cdi" OR "contrat" OR "cdd") AND ("cyber" OR "cybersécurité" OR "cybersecurity" OR "SOC" OR "pentest")',
      "location": LOC, "week": True}
 ]
 
@@ -29,26 +29,27 @@ MAIL_TO = [m.strip() for m in os.environ.get("MAIL_TO", "").split(",") if m.stri
 
 def job_id(job: dict) -> str:
     """Identifiant stable : l'ID numérique LinkedIn, sinon le lien sans paramètres."""
-    link = job["link"].split("?")[0]
-    m = re.search(r"(\d{8,})", link)
-    return m.group(1) if m else link
+    if job["source"] == "linkedin":
+        return job["id"]
+    return f"{job['sources']}:{job['id']}"
 
 
 def load_seen() -> set:
-    if SEEN_FILE.exists():
-        return set(json.loads(SEEN_FILE.read_text()))
-    return set()
+    if not SEEN_FILE.exists():
+        return set(), set()
+    data = json.loads(SEEN_FILE.read_text())
+    return set(data["jobs"]), set(data["sources"])
 
 
-def save_seen(seen: set) -> None:
-    SEEN_FILE.write_text(json.dumps(sorted(seen)))
+def save_seen(seen: set, sources: set) -> None:
+    SEEN_FILE.write_text(json.dumps({"jobs": sorted(seen), "sources": sorted(sources)}))
 
 
 def notify_email(jobs: list) -> None:
     lines = []
     for job in jobs:
         lines.append(
-            f"{job['title']}\n"
+            f"[{job['source']}] {job['title']}\n"
             f"  {job['company']} - {job['location']}\n"
             f"  {job['link'].split('?')[0]}\n"
         )
@@ -59,7 +60,7 @@ def notify_email(jobs: list) -> None:
         return
 
     msg = EmailMessage()
-    msg["Subject"] = f"{len(jobs)} nouvelle(s) offre(s) LinkedIn"
+    msg["Subject"] = f"{len(jobs)} nouvelle(s) offre(s)"
     msg["From"] = SMTP_USER
     msg["To"] = ", ".join(MAIL_TO)
     msg.set_content(body)
@@ -70,39 +71,31 @@ def notify_email(jobs: list) -> None:
 
 
 def main() -> None:
-    first_run = not SEEN_FILE.exists()
-    seen = load_seen()
-    new_jobs = []
+    seen, known_sources = load_seen()
+    sources = get_sources()
+    ok_sources = set()
+    new_jobs, silent = [], 0
 
     for s in SEARCHES:
-        args = Namespace(
-            title=s["title"],
-            location=s["location"],
-            day=s.get("day", False),
-            week=s.get("week", False),
-            month=s.get("month", False),
-        )
-        try:
-            jobs = filter_jobs(scrape_linkedin(args), args.title)
-        except Exception as e:
-            print(f"Erreur sur la recherche {s['title']!r} : {e}", file=sys.stderr)
-            continue
-
+        jobs = search_all(s["title"], s["location"], s.get("period"), s.get("keywords"), sources, ok_sources)
         for job in jobs:
             jid = job_id(job)
-            if jid not in seen:
-                seen.add(jid)
+            if jid in seen:
+                continue
+            seen.add(jid)
+            if job["source"] in known_sources:
                 new_jobs.append(job)
+            else:
+                silent += 1
+    if silent:
+            print(f"Initialisation de nouvelles sources : {silent} offres mémorisées, sans notifications.")
 
-    # Premier lancement : on mémorise l'existant sans spammer
-    if first_run:
-        print(f"Initialisation : {len(new_jobs)} offres mémorisées, aucune notification.")
-    else:
-        if new_jobs:
-            notify_email(new_jobs)
-        print(f"{len(new_jobs)} nouvelle(s) offre(s) notifiée(s).")
+    new_jobs = delete_duplicates(new_jobs)
+    if new_jobs:
+        notify_email(new_jobs)
+    print(f"{len(new_jobs)} nouvelle(s) offre(s) notifiée(s).")
 
-    save_seen(seen)
+    save_seen(seen, known_sources | ok_sources)
 
 
 if __name__ == "__main__":
